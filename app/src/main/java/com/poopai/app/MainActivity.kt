@@ -42,7 +42,7 @@ private val Black = Color(0xFF080808)
 private val Panel = Color(0xFF141414)
 private val White = Color(0xFFF5F5F5)
 private val Gray = Color(0xFF929292)
-private const val ENDPOINT = "https://poop-ai-fts2rrzr4-abdomousa5959-coders-projects.vercel.app/api/chat"
+private const val ENDPOINT = "https://poop-ai-api-abdomousa5959-coders-projects.vercel.app/api/chat"
 private const val MAX_FILE = 8 * 1024 * 1024
 
 data class ChatFile(val name: String, val code: String, val language: String)
