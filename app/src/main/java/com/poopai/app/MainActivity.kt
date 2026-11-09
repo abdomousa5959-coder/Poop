@@ -297,6 +297,7 @@ fun PoopApp() {
                 TextButton(onClick = { agentMode = !agentMode }) {
                     Text(if (agentMode) "● وضع الوكيل مُفعّل" else "تشغيل وضع الوكيل", color = if (agentMode) Color(0xFF9FE3B1) else Gray, fontSize = 12.sp)
                 }
+                TextButton(onClick = { context.startActivity(android.content.Intent(android.provider.Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION, android.net.Uri.parse("package:" + context.packageName))) }) { Text("صلاحية كل الملفات", color = Color(0xFF9FE3B1), fontSize = 11.sp) }
                 Spacer(Modifier.weight(1f))
                 if (agentMode) Text("تحكم بإذن المستخدم", color = Gray, fontSize = 10.sp)
             }
