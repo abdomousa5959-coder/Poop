@@ -96,27 +96,57 @@ private suspend fun readFile(context: Context, uri: Uri): ChatMessage = withCont
 private suspend fun requestAgent(task: String): Pair<String, List<Pair<String, JSONObject>>> = withContext(Dispatchers.IO) {
     val connection = URL("https://poop-ai-43xjw55hb-abdomousa5959-coders-projects.vercel.app/api/agent").openConnection() as HttpURLConnection
     try {
-        connection.requestMethod = "POST"; connection.connectTimeout = 20000; connection.readTimeout = 120000; connection.doOutput = true
+        connection.requestMethod = "POST"
+        connection.connectTimeout = 20000
+        connection.readTimeout = 120000
+        connection.doOutput = true
         connection.setRequestProperty("Content-Type", "application/json; charset=utf-8")
-        connection.outputStream.use { it.write(JSONObject().put("task", task).toString().toByteArray(Charsets.UTF_8)) }
+        connection.outputStream.use {
+            it.write(JSONObject().put("task", task).toString().toByteArray(Charsets.UTF_8))
+        }
+
         val status = connection.responseCode
-        val raw = (if (status in 200..299) connection.inputStream else connection.errorStream)?.bufferedReader()?.use { it.readText() }.orEmpty()
-        val result = JSONObject(raw.ifBlank { "{}" })
-        if (status !in 200..299) error(result.optString("error").ifBlank { "تعذر تخطيط المهمة ($status)" })
-        val actions = mutableListOf<Pair<String, JSONObject>>()
-        val array = result.optJSONArray("actions") ?: JSONArray()
-        for (i in 0 until array.length()) {
-            val item = array.optJSONObject(i) ?: continue
-            val rawArgs = item.opt("args")
-            val args = when (rawArgs) {
-                is JSONObject -> rawArgs
-                is String -> try { JSONObject(rawArgs) } catch (_: Exception) { JSONObject() }
+        val raw = (if (status in 200..299) connection.inputStream else connection.errorStream)
+            ?.bufferedReader()?.use { it.readText() }.orEmpty()
+        val response = try { JSONObject(raw) } catch (_: Exception) {
+            throw IllegalStateException("استجابة الخادم غير مفهومة (HTTP $status)")
+        }
+        if (status !in 200..299) {
+            throw IllegalStateException(response.optString("error").ifBlank { "تعذر تخطيط المهمة (HTTP $status)" })
+        }
+
+        // Accept either a JSON array or a JSON-encoded array, and object/string action entries.
+        val actionsValue = response.opt("actions")
+        val actionsArray = when (actionsValue) {
+            is JSONArray -> actionsValue
+            is String -> try { JSONArray(actionsValue) } catch (_: Exception) { JSONArray() }
+            else -> JSONArray()
+        }
+        val parsedActions = mutableListOf<Pair<String, JSONObject>>()
+        for (index in 0 until actionsArray.length()) {
+            val entryValue = actionsArray.opt(index)
+            val entry = when (entryValue) {
+                is JSONObject -> entryValue
+                is String -> try { JSONObject(entryValue) } catch (_: Exception) { null }
+                else -> null
+            } ?: continue
+
+            val actionName = entry.optString("name").trim()
+            if (actionName.isEmpty()) continue
+
+            val argsValue = entry.opt("args")
+            val args = when (argsValue) {
+                is JSONObject -> argsValue
+                is String -> try { JSONObject(argsValue) } catch (_: Exception) { JSONObject() }
+                is Map<*, *> -> JSONObject(argsValue)
                 else -> JSONObject()
             }
-            actions.add(item.optString("name") to args)
+            parsedActions.add(actionName to args)
         }
-        result.optString("message").ifBlank { "تم تحليل المهمة." } to actions
-    } finally { connection.disconnect() }
+        response.optString("message").ifBlank { "تم تحليل المهمة." } to parsedActions
+    } finally {
+        connection.disconnect()
+    }
 }
 
 private suspend fun ask(id: String, history: List<ChatMessage>): String = withContext(Dispatchers.IO) {
