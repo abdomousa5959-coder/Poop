@@ -92,6 +92,27 @@ private suspend fun readFile(context: Context, uri: Uri): ChatMessage = withCont
     }
 }
 
+
+private suspend fun requestAgent(task: String): Pair<String, List<Pair<String, JSONObject>>> = withContext(Dispatchers.IO) {
+    val connection = URL("https://poop-ai-43xjw55hb-abdomousa5959-coders-projects.vercel.app/api/agent").openConnection() as HttpURLConnection
+    try {
+        connection.requestMethod = "POST"; connection.connectTimeout = 20000; connection.readTimeout = 120000; connection.doOutput = true
+        connection.setRequestProperty("Content-Type", "application/json; charset=utf-8")
+        connection.outputStream.use { it.write(JSONObject().put("task", task).toString().toByteArray(Charsets.UTF_8)) }
+        val status = connection.responseCode
+        val raw = (if (status in 200..299) connection.inputStream else connection.errorStream)?.bufferedReader()?.use { it.readText() }.orEmpty()
+        val result = JSONObject(raw.ifBlank { "{}" })
+        if (status !in 200..299) error(result.optString("error").ifBlank { "تعذر تخطيط المهمة ($status)" })
+        val actions = mutableListOf<Pair<String, JSONObject>>()
+        val array = result.optJSONArray("actions") ?: JSONArray()
+        for (i in 0 until array.length()) {
+            val item = array.getJSONObject(i)
+            actions.add(item.optString("name") to (item.optJSONObject("args") ?: JSONObject()))
+        }
+        result.optString("message").ifBlank { "تم تحليل المهمة." } to actions
+    } finally { connection.disconnect() }
+}
+
 private suspend fun ask(id: String, history: List<ChatMessage>): String = withContext(Dispatchers.IO) {
     val c = URL(ENDPOINT).openConnection() as HttpURLConnection
     try {
@@ -143,19 +164,38 @@ fun PoopApp() {
         } else saving = null
     }
 
+    var agentMode by remember { mutableStateOf(false) }
+
     fun send() {
-        val prompt = input.trim(); val attachment = pending
+        val prompt = input.trim()
+        val attachment = pending
         if ((prompt.isEmpty() && attachment == null) || busy) return
+        if (agentMode && attachment != null) {
+            Toast.makeText(context, "وضع الوكيل يستقبل الأوامر النصية حاليًا", Toast.LENGTH_LONG).show()
+            return
+        }
         val outgoing = if (attachment == null) ChatMessage(prompt, true)
             else attachment.copy(text = if (prompt.isBlank()) attachment.text else prompt + "\n\n" + attachment.text)
         val history = messages + outgoing
         messages = history; input = ""; pending = null; busy = true
         scope.launch {
             try {
-                val (plain, files) = extractFiles(ask(id, history.drop(1)))
-                messages = messages + ChatMessage(plain.ifBlank { "جهزتلك الملفات المطلوبة." }, false, files = files)
-            } catch (e: Exception) { messages = messages + ChatMessage("تعذر إكمال الطلب: " + (e.message ?: "مشكلة اتصال"), false) }
-            finally { busy = false }
+                if (agentMode) {
+                    val (message, actions) = requestAgent(prompt)
+                    if (actions.isNotEmpty() && AgentBridge.service == null) {
+                        messages = messages + ChatMessage(message + "\n\nفعّل POOP AI Agent من إعدادات إمكانية الوصول، وبعدها ارجع وجرب الأمر.", false)
+                        context.startActivity(android.content.Intent(android.provider.Settings.ACTION_ACCESSIBILITY_SETTINGS).addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK))
+                    } else {
+                        val results = actions.map { (name, args) -> AgentBridge.service?.execute(name, args) ?: "خدمة التحكم غير مفعّلة" }
+                        messages = messages + ChatMessage(if (actions.isEmpty()) message else message + "\n\n" + results.joinToString("\n"), false)
+                    }
+                } else {
+                    val (plain, files) = extractFiles(ask(id, history.drop(1)))
+                    messages = messages + ChatMessage(plain.ifBlank { "جهزتلك الملفات المطلوبة." }, false, files = files)
+                }
+            } catch (e: Exception) {
+                messages = messages + ChatMessage("تعذر إكمال الطلب: " + (e.message ?: "مشكلة اتصال"), false)
+            } finally { busy = false }
         }
     }
 
@@ -215,6 +255,13 @@ fun PoopApp() {
                     Spacer(Modifier.weight(1f))
                     TextButton(onClick = { pending = null }) { Text("إزالة", color = Gray) }
                 }
+            }
+            Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp), verticalAlignment = Alignment.CenterVertically) {
+                TextButton(onClick = { agentMode = !agentMode }) {
+                    Text(if (agentMode) "● وضع الوكيل مُفعّل" else "تشغيل وضع الوكيل", color = if (agentMode) Color(0xFF9FE3B1) else Gray, fontSize = 12.sp)
+                }
+                Spacer(Modifier.weight(1f))
+                if (agentMode) Text("تحكم بإذن المستخدم", color = Gray, fontSize = 10.sp)
             }
             Row(Modifier.fillMaxWidth().padding(12.dp).background(Panel, RoundedCornerShape(25.dp)).padding(8.dp),
                 verticalAlignment = Alignment.CenterVertically) {
