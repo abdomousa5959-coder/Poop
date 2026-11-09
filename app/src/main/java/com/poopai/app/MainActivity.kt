@@ -106,8 +106,14 @@ private suspend fun requestAgent(task: String): Pair<String, List<Pair<String, J
         val actions = mutableListOf<Pair<String, JSONObject>>()
         val array = result.optJSONArray("actions") ?: JSONArray()
         for (i in 0 until array.length()) {
-            val item = array.getJSONObject(i)
-            actions.add(item.optString("name") to (item.optJSONObject("args") ?: JSONObject()))
+            val item = array.optJSONObject(i) ?: continue
+            val rawArgs = item.opt("args")
+            val args = when (rawArgs) {
+                is JSONObject -> rawArgs
+                is String -> try { JSONObject(rawArgs) } catch (_: Exception) { JSONObject() }
+                else -> JSONObject()
+            }
+            actions.add(item.optString("name") to args)
         }
         result.optString("message").ifBlank { "تم تحليل المهمة." } to actions
     } finally { connection.disconnect() }
