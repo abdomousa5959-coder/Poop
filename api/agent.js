@@ -5,6 +5,9 @@ function json(res, status, body) {
   return res.end(JSON.stringify(body));
 }
 const tools = [
+  { type:"function", function:{ name:"search_youtube", description:"Search YouTube for the exact query requested and open the results.", parameters:{type:"object",properties:{query:{type:"string"}},required:["query"],additionalProperties:false} } },
+  { type:"function", function:{ name:"search_web", description:"Search the web for the exact query requested.", parameters:{type:"object",properties:{query:{type:"string"}},required:["query"],additionalProperties:false} } },
+  { type:"function", function:{ name:"read_screen", description:"Read text currently visible on the active screen after navigation or search.", parameters:{type:"object",properties:{},additionalProperties:false} } },
   { type:"function", function:{ name:"open_app", description:"Open an installed Android app by its visible app name.", parameters:{type:"object",properties:{app_name:{type:"string"}},required:["app_name"],additionalProperties:false} } },
   { type:"function", function:{ name:"open_url", description:"Open a website URL in the default browser.", parameters:{type:"object",properties:{url:{type:"string"}},required:["url"],additionalProperties:false} } },
   { type:"function", function:{ name:"tap_text", description:"Tap a visible UI element matching the supplied text. Only use when the user explicitly requested this interaction.", parameters:{type:"object",properties:{text:{type:"string"}},required:["text"],additionalProperties:false} } },
@@ -28,7 +31,7 @@ module.exports = async function handler(req,res) {
       body:JSON.stringify({
         model:"openrouter/free",
         messages:[
-          {role:"system",content:"You are POOP AI Android task planner. Convert the user's explicit request into the smallest safe sequence of Android actions using only the provided tools. Never infer permission to send messages, post, purchase, pay, delete, change security settings, or submit forms. Those actions are not available as tools. Do not claim actions happened. If a request is ambiguous, asks for a sensitive action, or cannot be safely completed, return a concise Arabic explanation and no tool calls. Use Egyptian Arabic. For opening a website use https URL. For app names use the visible app name. Only use tap/type when explicitly needed by the user's request."},
+          {role:"system",content:"You are POOP AI Android task planner. Convert the user's explicit request into the smallest safe sequence of Android actions using only the provided tools. For YouTube search requests, call search_youtube with the user's exact search terms; do not merely open YouTube. For web search requests, call search_web. If the user asks what appeared after navigation, call read_screen after opening/searching where appropriate. Never infer permission to send messages, post, purchase, pay, delete, change security settings, or submit forms. Those actions are not available as tools. Do not claim actions happened. If a request is ambiguous, asks for a sensitive action, or cannot be safely completed, return a concise Arabic explanation and no tool calls. Use Egyptian Arabic. For opening a website use https URL. For app names use the visible app name. Only use tap/type when explicitly needed by the user's request."},
           {role:"user",content:task}
         ],
         tools,tool_choice:"auto",parallel_tool_calls:false,max_tokens:1200,temperature:0.1
