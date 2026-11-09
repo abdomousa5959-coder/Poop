@@ -16,9 +16,3 @@ workflows:
           ./gradlew --no-daemon clean assembleDebug
     artifacts:
       - app/build/outputs/apk/debug/*.apk
-      - app/build/outputs/mapping/**/*
-    publishing:
-      email:
-        notify:
-          success: true
-          failure: true
