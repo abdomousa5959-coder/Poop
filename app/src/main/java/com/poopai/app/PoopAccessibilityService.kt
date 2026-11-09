@@ -24,6 +24,27 @@ class PoopAccessibilityService : AccessibilityService() {
         return try {
             when (action) {
                 "open_app" -> openApp(args.optString("app_name"))
+                "search_youtube" -> {
+                    val query = args.optString("query").trim()
+                    require(query.isNotBlank()) { "اكتب كلمات البحث" }
+                    val url = "https://www.youtube.com/results?search_query=" + Uri.encode(query)
+                    startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+                    "تم فتح نتائج بحث يوتيوب عن: $query"
+                }
+                "search_web" -> {
+                    val query = args.optString("query").trim()
+                    require(query.isNotBlank()) { "اكتب كلمات البحث" }
+                    val url = "https://www.google.com/search?q=" + Uri.encode(query)
+                    startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+                    "تم فتح نتائج البحث عن: $query"
+                }
+                "read_screen" -> {
+                    val root = rootInActiveWindow ?: error("الشاشة الحالية غير متاحة")
+                    val lines = mutableListOf<String>()
+                    collectVisibleText(root, lines, 0)
+                    require(lines.isNotEmpty()) { "لم أستطع قراءة نص ظاهر على الشاشة" }
+                    lines.distinct().take(80).joinToString("\n")
+                }
                 "open_url" -> {
                     val url = args.optString("url")
                     require(url.startsWith("https://") || url.startsWith("http://")) { "رابط غير صالح" }
@@ -73,6 +94,15 @@ class PoopAccessibilityService : AccessibilityService() {
         launch.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
         startActivity(launch)
         return "تم فتح " + match.loadLabel(pm)
+    }
+
+    private fun collectVisibleText(node: AccessibilityNodeInfo?, out: MutableList<String>, depth: Int) {
+        if (node == null || depth > 30 || out.size >= 100) return
+        if (node.isVisibleToUser) {
+            node.text?.toString()?.trim()?.takeIf { it.isNotEmpty() }?.let { out.add(it) }
+            node.contentDescription?.toString()?.trim()?.takeIf { it.isNotEmpty() }?.let { out.add(it) }
+        }
+        for (i in 0 until node.childCount) collectVisibleText(node.getChild(i), out, depth + 1)
     }
 
     private fun findText(node: AccessibilityNodeInfo?, target: String): AccessibilityNodeInfo? {
