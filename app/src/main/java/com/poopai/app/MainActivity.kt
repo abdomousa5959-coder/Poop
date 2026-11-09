@@ -94,7 +94,7 @@ private suspend fun readFile(context: Context, uri: Uri): ChatMessage = withCont
 
 
 // Build retry marker: keep agent API response handling verified in CI.
-private suspend fun requestAgent(task: String): Pair<String, List<Pair<String, JSONObject>>> = withContext(Dispatchers.IO) {
+private suspend fun requestAgent(task: String, observations: JSONArray): JSONObject = withContext(Dispatchers.IO) {
     val connection = URL(ENDPOINT.removeSuffix("/chat") + "/agent").openConnection() as HttpURLConnection
     try {
         connection.requestMethod = "POST"
@@ -103,51 +103,14 @@ private suspend fun requestAgent(task: String): Pair<String, List<Pair<String, J
         connection.doOutput = true
         connection.setRequestProperty("Content-Type", "application/json; charset=utf-8")
         connection.outputStream.use {
-            it.write(JSONObject().put("task", task).toString().toByteArray(Charsets.UTF_8))
+            it.write(JSONObject().put("task", task).put("observations", observations).toString().toByteArray(Charsets.UTF_8))
         }
-
         val status = connection.responseCode
-        val raw = (if (status in 200..299) connection.inputStream else connection.errorStream)
-            ?.bufferedReader()?.use { it.readText() }.orEmpty()
-        val response = try { JSONObject(raw) } catch (_: Exception) {
-            throw IllegalStateException("استجابة الخادم غير مفهومة (HTTP $status)")
-        }
-        if (status !in 200..299) {
-            throw IllegalStateException(response.optString("error").ifBlank { "تعذر تخطيط المهمة (HTTP $status)" })
-        }
-
-        // Accept either a JSON array or a JSON-encoded array, and object/string action entries.
-        val actionsValue = response.opt("actions")
-        val actionsArray = when (actionsValue) {
-            is JSONArray -> actionsValue
-            is String -> try { JSONArray(actionsValue) } catch (_: Exception) { JSONArray() }
-            else -> JSONArray()
-        }
-        val parsedActions = mutableListOf<Pair<String, JSONObject>>()
-        for (index in 0 until actionsArray.length()) {
-            val entryValue = actionsArray.opt(index)
-            val entry = when (entryValue) {
-                is JSONObject -> entryValue
-                is String -> try { JSONObject(entryValue) } catch (_: Exception) { null }
-                else -> null
-            } ?: continue
-
-            val actionName = entry.optString("name").trim()
-            if (actionName.isEmpty()) continue
-
-            val argsValue = entry.opt("args")
-            val args = when (argsValue) {
-                is JSONObject -> argsValue
-                is String -> try { JSONObject(argsValue) } catch (_: Exception) { JSONObject() }
-                is Map<*, *> -> JSONObject(argsValue)
-                else -> JSONObject()
-            }
-            parsedActions.add(actionName to args)
-        }
-        response.optString("message").ifBlank { "تم تحليل المهمة." } to parsedActions
-    } finally {
-        connection.disconnect()
-    }
+        val raw = (if (status in 200..299) connection.inputStream else connection.errorStream)?.bufferedReader()?.use { it.readText() }.orEmpty()
+        val response = try { JSONObject(raw) } catch (_: Exception) { throw IllegalStateException("استجابة الوكيل غير مفهومة (HTTP $status)") }
+        if (status !in 200..299) throw IllegalStateException(response.optString("error").ifBlank { "تعذر تخطيط الخطوة (HTTP $status)" })
+        response
+    } finally { connection.disconnect() }
 }
 
 private suspend fun ask(id: String, history: List<ChatMessage>): String = withContext(Dispatchers.IO) {
@@ -218,13 +181,30 @@ fun PoopApp() {
         scope.launch {
             try {
                 if (agentMode) {
-                    val (message, actions) = requestAgent(prompt)
-                    if (actions.isNotEmpty() && AgentBridge.service == null) {
-                        messages = messages + ChatMessage(message + "\n\nفعّل POOP AI Agent من إعدادات إمكانية الوصول، وبعدها ارجع وجرب الأمر.", false)
+                    if (AgentBridge.service == null) {
+                        messages = messages + ChatMessage("فعّل خدمة POOP AI Agent من إعدادات إمكانية الوصول أولًا.", false)
                         context.startActivity(android.content.Intent(android.provider.Settings.ACTION_ACCESSIBILITY_SETTINGS).addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK))
                     } else {
-                        val results = actions.map { (name, args) -> AgentBridge.service?.execute(name, args) ?: "خدمة التحكم غير مفعّلة" }
-                        messages = messages + ChatMessage(if (actions.isEmpty()) message else message + "\n\n" + results.joinToString("\n"), false)
+                        val observations = JSONArray()
+                        var finished = false
+                        var lastMessage = "بدأت تنفيذ المهمة."
+                        for (step in 1..8) {
+                            val plan = requestAgent(prompt, observations)
+                            lastMessage = plan.optString("message").ifBlank { "بنراجع الخطوة التالية..." }
+                            if (plan.optBoolean("done")) { finished = true; break }
+                            val action = plan.optJSONObject("action")
+                            val name = action?.optString("name").orEmpty()
+                            val args = action?.optJSONObject("args") ?: JSONObject()
+                            if (name.isBlank()) { lastMessage = "الوكيل لم يحدد إجراءً صالحًا."; break }
+                            messages = messages + ChatMessage("الخطوة $step: $lastMessage", false)
+                            val result = AgentBridge.service?.execute(name, args) ?: "خدمة التحكم انقطعت."
+                            observations.put(JSONObject().put("step", step).put("action", name).put("args", args).put("result", result))
+                            kotlinx.coroutines.delay(900)
+                            if (result.startsWith("فشل التنفيذ:")) {
+                                // Feed the failure back to the planner; it must choose a different safe route.
+                            }
+                        }
+                        messages = messages + ChatMessage(if (finished) lastMessage else lastMessage + "\n\nوقفت بعد 8 خطوات كحد أمان. تقدر تطلب مني أكمل من حيث وصلنا.", false)
                     }
                 } else {
                     val (plain, files) = extractFiles(ask(id, history.drop(1)))
