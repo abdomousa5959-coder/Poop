@@ -26,6 +26,15 @@ function rateLimited(key) {
   current.count += 1;
   return current.count > MAX_REQUESTS_PER_WINDOW;
 }
+function cleanAssistantText(value) {
+  if (typeof value !== "string") return "";
+  return value
+    .replace(/<\\|tool_call_start\\|>[\\s\\S]*?<\\|tool_call_end\\|>/gi, "")
+    .replace(/<\\|(?:tool_calls|tool_call|function_call|im_start|im_end|fim_suffix|ghissue|ghreview)[^>]*\\|>/gi, "")
+    .replace(/\\[\\[TOOL_CALL:[\\s\\S]*?\\]\\]/gi, "")
+    .trim();
+}
+
 function validateContent(content) {
   if (typeof content === "string") {
     if (!content.trim() || content.length > MAX_MESSAGE_CHARS) return null;
@@ -87,7 +96,7 @@ module.exports = async function handler(req, res) {
         model: "openrouter/free",
         messages: [{
           role: "system",
-          content: "You are POOP AI, a polished, capable assistant. Reply in the user's language and use natural Egyptian Arabic when appropriate. When the user requests code, provide complete runnable code in fenced code blocks with the correct language tag and a sensible filename comment on the first line when useful. Keep explanations outside code blocks concise. For multiple files, provide one fenced block per file and put the filename on the line immediately before each block as **FILE: filename**. Analyze user-provided images and documents when possible. Never claim to have performed actions you did not perform."
+          content: "You are POOP AI, a polished, capable assistant. Reply in the user's language and use natural Egyptian Arabic when appropriate. Never output internal tool-call syntax, shell commands pretending to have run, control tokens, or hidden action markup. This endpoint is chat-only: do not claim to execute phone actions; explain that device actions must be run through the in-app Agent mode. When the user requests code, provide complete runnable code in fenced code blocks with the correct language tag and a sensible filename comment on the first line when useful. Keep explanations outside code blocks concise. For multiple files, provide one fenced block per file and put the filename on the line immediately before each block as **FILE: filename**. Analyze user-provided images and documents when possible. Never claim to have performed actions you did not perform."
         }, ...cleanMessages],
         temperature: 0.7,
         max_tokens: 4000
@@ -98,9 +107,9 @@ module.exports = async function handler(req, res) {
       const message = data?.error?.message;
       return json(res, upstream.status === 429 ? 503 : 502, { error: message || "المساعد غير متاح مؤقتًا." });
     }
-    const answer = data?.choices?.[0]?.message?.content;
-    if (typeof answer !== "string" || !answer.trim()) return json(res, 502, { error: "وصل رد فارغ. جرّب تاني." });
-    return json(res, 200, { answer: answer.trim() });
+    const answer = cleanAssistantText(data?.choices?.[0]?.message?.content);
+    if (!answer) return json(res, 502, { error: "وصل رد غير صالح من النموذج. جرّب تاني أو فعّل وضع الوكيل لتنفيذ أوامر الهاتف." });
+    return json(res, 200, { answer });
   } catch (_) {
     return json(res, 400, { error: "تعذر معالجة الطلب أو المرفق." });
   }
