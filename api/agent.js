@@ -39,7 +39,11 @@ module.exports = async function handler(req,res) {
     const msg=data?.choices?.[0]?.message||{};
     const actions=[];
     for(const call of (msg.tool_calls||[]).slice(0,6)){
-      let args={};try{args=JSON.parse(call.function?.arguments||"{}");}catch(_){}
+      let args={};
+      try {
+        const parsed=JSON.parse(call.function?.arguments||"{}");
+        if(parsed && typeof parsed==="object" && !Array.isArray(parsed)) args=parsed;
+      } catch(_){}
       const name=call.function?.name;
       if(!tools.some(t=>t.function.name===name))continue;
       actions.push({name,args});
