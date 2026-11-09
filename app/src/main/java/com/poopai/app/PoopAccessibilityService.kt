@@ -33,6 +33,8 @@ class PoopAccessibilityService : AccessibilityService() {
                 "tap_text" -> {
                     val text = args.optString("text")
                     require(text.isNotBlank())
+                    val risky = listOf("send", "submit", "pay", "purchase", "delete", "remove", "confirm", "شراء", "دفع", "حذف", "إرسال", "ارسال", "تأكيد", "موافق")
+                    require(risky.none { text.contains(it, true) }) { "الضغط على إجراءات حساسة يحتاج تأكيدًا منفصلًا." }
                     val node = findText(rootInActiveWindow, text) ?: error("مش لاقي العنصر: $text")
                     val clicked = clickNode(node)
                     require(clicked) { "العنصر غير قابل للضغط" }
