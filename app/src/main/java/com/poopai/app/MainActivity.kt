@@ -265,7 +265,7 @@ fun PoopApp() {
                 }
             }
             Text(
-                "POOP AI • FREE MODEL ROUTING",
+                "POOP AI • YOUR PRIVATE AI SPACE",
                 color = Color(0xFF626262),
                 fontSize = 9.sp,
                 modifier = Modifier.align(Alignment.CenterHorizontally).padding(bottom = 8.dp),
