@@ -2,7 +2,6 @@ workflows:
   poop-ai-android:
     name: POOP AI - Android APK
     max_build_duration: 60
-    # mac_mini_m2 is available on Codemagic's free individual plan.
     instance_type: mac_mini_m2
     environment:
       vars:
@@ -11,9 +10,11 @@ workflows:
       - name: Configure Android SDK
         script: |
           echo "sdk.dir=$ANDROID_SDK_ROOT" > local.properties
+      - name: Verify Gradle installation
+        script: |
+          gradle --version
       - name: Build debug APK
         script: |
-          chmod +x ./gradlew
-          ./gradlew --no-daemon clean assembleDebug
+          gradle --no-daemon clean assembleDebug
     artifacts:
       - app/build/outputs/apk/debug/*.apk
