@@ -94,7 +94,7 @@ private suspend fun readFile(context: Context, uri: Uri): ChatMessage = withCont
 
 
 private suspend fun requestAgent(task: String): Pair<String, List<Pair<String, JSONObject>>> = withContext(Dispatchers.IO) {
-    val connection = URL("https://poop-ai-43xjw55hb-abdomousa5959-coders-projects.vercel.app/api/agent").openConnection() as HttpURLConnection
+    val connection = URL("https://poop-ai-api.vercel.app/api/agent").openConnection() as HttpURLConnection
     try {
         connection.requestMethod = "POST"
         connection.connectTimeout = 20000
